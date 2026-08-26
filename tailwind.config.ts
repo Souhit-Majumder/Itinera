@@ -11,6 +11,15 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        quest: "#6366F1",
+        discovery: "#F59E0B",
+        success: "#10B981",
+        danger: "#EF4444",
+        info: "#3B82F6",
+      },
+      fontFamily: {
+        outfit: ['var(--font-outfit)', 'sans-serif'],
+        inter: ['var(--font-inter)', 'sans-serif'],
       },
     },
   },
