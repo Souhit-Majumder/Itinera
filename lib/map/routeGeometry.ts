@@ -153,9 +153,11 @@ export interface RouteGeometry {
  */
 export async function getIntraCityRoute(
   from: [number, number],
-  to: [number, number]
+  to: [number, number],
+  mode: 'walking' | 'car' = 'walking'
 ): Promise<RouteGeometry> {
-  const osrmRoute = await fetchOSRMRoute(from, to, 'walking');
+  const osrmProfile = mode === 'car' ? 'driving' : 'walking';
+  const osrmRoute = await fetchOSRMRoute(from, to, osrmProfile);
   if (osrmRoute && osrmRoute.length > 2) {
     return { points: osrmRoute, source: 'osrm' };
   }

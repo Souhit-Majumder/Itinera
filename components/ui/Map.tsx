@@ -64,6 +64,109 @@ const FitBoundsComponent = dynamic(
   { ssr: false }
 );
 
+const WalkingRoutePolyline = dynamic(
+  () =>
+    import('react-leaflet').then((mod) => {
+      const { Polyline, useMapEvents } = mod;
+
+      function WalkingRoute({
+        positions,
+        color,
+        shadowColor,
+        opacity,
+        onClick,
+      }: {
+        positions: LatLngTuple[];
+        color: string;
+        shadowColor: string;
+        opacity: number;
+        onClick?: () => void;
+      }) {
+        const [zoom, setZoom] = useState(12);
+
+        const map = useMapEvents({
+          zoom: () => setZoom(map.getZoom()),
+        });
+
+        useEffect(() => {
+          if (map) setZoom(map.getZoom());
+        }, [map]);
+
+        // Scale dots based on zoom:
+        // zoom 10 -> dot 3, gap 9
+        // zoom 14 -> dot 5, gap 15
+        // zoom 18 -> dot 7, gap 21
+        const dotSize = Math.max(3, Math.min(8, zoom / 2 - 2));
+        const gapSize = dotSize * 3;
+
+        // shadow offset
+        const shadowOffset = 0.0006;
+        const shadowPositions: LatLngTuple[] = positions.map(([lat, lng]) => [
+          lat - shadowOffset,
+          lng + shadowOffset * 0.5,
+        ]);
+
+        return (
+          <>
+            <Polyline
+              positions={shadowPositions}
+              pathOptions={{
+                color: shadowColor,
+                weight: dotSize + 2,
+                opacity: 0.15,
+                dashArray: `0, ${gapSize}`,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+            <Polyline
+              positions={positions}
+              eventHandlers={{ click: onClick }}
+              pathOptions={{
+                color,
+                weight: dotSize,
+                opacity,
+                dashArray: `0, ${gapSize}`,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          </>
+        );
+      }
+
+      WalkingRoute.displayName = 'WalkingRoute';
+      return WalkingRoute;
+    }),
+  { ssr: false }
+);
+
+const FocusPointComponent = dynamic(
+  () =>
+    import('react-leaflet').then((mod) => {
+      const { useMap } = mod;
+
+      function FocusPoint({ point, zoom }: { point: LatLngTuple; zoom: number }) {
+        const map = useMap();
+
+        useEffect(() => {
+          if (point) {
+            map.flyTo(point, zoom, {
+              animate: true,
+              duration: 1.0,
+            });
+          }
+        }, [map, point, zoom]);
+
+        return null;
+      }
+
+      FocusPoint.displayName = 'FocusPoint';
+      return FocusPoint;
+    }),
+  { ssr: false }
+);
+
 // ─── ItineraMap ─────────────────────────────────────────────────────────────
 
 interface ItineraMapProps {
@@ -76,10 +179,15 @@ interface ItineraMapProps {
    * When provided, `center` and `zoom` become initial fallbacks only.
    */
   fitPoints?: [number, number][];
+  /**
+   * An optional point to temporarily focus the map on (e.g. selecting a hotspot).
+   * Does not alter the main bounding box.
+   */
+  focusPoint?: [number, number] | null;
   children: React.ReactNode;
 }
 
-export function ItineraMap({ center, zoom, fitPoints, children }: ItineraMapProps) {
+export function ItineraMap({ center, zoom, fitPoints, focusPoint, children }: ItineraMapProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -127,6 +235,7 @@ export function ItineraMap({ center, zoom, fitPoints, children }: ItineraMapProp
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       />
       {bounds && <FitBoundsComponent bounds={bounds} padding={[60, 60]} />}
+      {focusPoint && <FocusPointComponent point={focusPoint as LatLngTuple} zoom={14} />}
       {children}
     </MapContainer>
   );
@@ -181,6 +290,150 @@ export function ItineraMarker({
   );
 }
 
+// ─── HotspotMarker ──────────────────────────────────────────────────────────
+
+export function HotspotMarker({
+  position,
+  name,
+  category,
+  isSelected,
+  onClick,
+}: {
+  position: [number, number];
+  name: string;
+  category: string;
+  isSelected?: boolean;
+  onClick?: () => void;
+}) {
+  const [L, setL] = useState<typeof import('leaflet') | null>(null);
+
+  useEffect(() => {
+    import('leaflet').then((leaflet) => setL(leaflet));
+  }, []);
+
+  if (!L) return null;
+
+  // Use a star shape or simple pin for hotspots
+  const scale = isSelected ? 1.2 : 1;
+  const size = isSelected ? 24 : 20;
+
+  const CustomIcon = L.divIcon({
+    className: 'hotspot-marker',
+    html: `
+      <div style="
+        width: ${size}px; height: ${size}px;
+        background: #F59E0B; /* amber-500 */
+        border: 2px solid white;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        transform: scale(${scale});
+        transition: transform 0.2s ease;
+      ">
+        <svg xmlns="http://www.w3.org/2000/svg" width="${size - 8}" height="${size - 8}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+      </div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+
+  return (
+    <Marker 
+      position={position as LatLngTuple} 
+      icon={CustomIcon}
+      eventHandlers={{
+        click: onClick,
+      }}
+    >
+      <Tooltip direction="top" offset={[0, -size/2]} opacity={1} permanent={isSelected}>
+        <div className="font-sans font-medium text-slate-800 text-xs text-center">
+          <div>{name}</div>
+          <div className="text-[9px] text-slate-400 capitalize">{category}</div>
+        </div>
+      </Tooltip>
+    </Marker>
+  );
+}
+
+// ─── CheckpointMarker ───────────────────────────────────────────────────────
+
+export function CheckpointMarker({
+  position,
+  name,
+  type,
+  isSelected,
+  onClick,
+}: {
+  position: [number, number];
+  name: string;
+  type: string;
+  isSelected?: boolean;
+  onClick?: () => void;
+}) {
+  const [L, setL] = useState<typeof import('leaflet') | null>(null);
+
+  useEffect(() => {
+    import('leaflet').then((leaflet) => setL(leaflet));
+  }, []);
+
+  if (!L) return null;
+
+  const scale = isSelected ? 1.2 : 1;
+  const size = isSelected ? 24 : 20;
+
+  // Map type to a simple emoji for the marker
+  const iconMap: Record<string, string> = {
+    hotel: '🏨',
+    monument: '🏛️',
+    attraction: '📸',
+    transit: '🚉',
+    restaurant: '🍽️',
+    museum: '🖼️',
+    park: '🌿',
+    shopping: '🛍️',
+    nightlife: '🍸',
+    transport: '🚌',
+  };
+  const emoji = iconMap[type] || '📍';
+
+  const CustomIcon = L.divIcon({
+    className: 'checkpoint-marker',
+    html: `
+      <div style="
+        width: ${size}px; height: ${size}px;
+        background: white;
+        border: 2px solid #6366f1; /* indigo-500 */
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        transform: scale(${scale});
+        transition: transform 0.2s ease;
+        font-size: ${size - 10}px;
+      ">
+        ${emoji}
+      </div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+
+  return (
+    <Marker
+      position={position as LatLngTuple}
+      icon={CustomIcon}
+      eventHandlers={{ click: onClick }}
+    >
+      <Tooltip direction="top" offset={[0, -size / 2]} opacity={1} permanent={isSelected}>
+        <div className="font-sans font-medium text-slate-800 text-xs text-center">
+          <div>{name}</div>
+        </div>
+      </Tooltip>
+    </Marker>
+  );
+}
+
 // ─── ItineraRoute (3D-depth route with shadow) ─────────────────────────────
 
 /**
@@ -195,10 +448,12 @@ export function ItineraMarker({
 export function ItineraRoute({
   positions,
   variant = 'completed',
+  mode,
   onClick,
 }: {
   positions: [number, number][];
-  variant?: 'completed' | 'future';
+  variant?: 'completed' | 'current' | 'future';
+  mode?: string;
   onClick?: () => void;
 }) {
   if (!positions || positions.length < 2) return null;
@@ -243,14 +498,33 @@ export function ItineraRoute({
     );
   }
 
-  // Completed route — solid with 3D depth
+  // Active or completed
+  const isCompleted = variant === 'completed';
+  const mainColor = isCompleted ? '#cbd5e1' : '#6366f1'; // slate-300 vs indigo-500
+  const casingColor = isCompleted ? '#94a3b8' : '#312e81'; // slate-400 vs indigo-900
+  const shadowColor = isCompleted ? '#cbd5e1' : '#1e1b4b'; // slate-300 vs indigo-950
+  const opacity = isCompleted ? 0.7 : 0.85;
+
+  if (mode === 'walking') {
+    return (
+      <WalkingRoutePolyline
+        positions={latLngPositions}
+        color={mainColor}
+        shadowColor={shadowColor}
+        opacity={opacity}
+        onClick={onClick}
+      />
+    );
+  }
+
+  // Completed or current solid route (driving, train, flight) with 3D depth
   return (
     <>
       {/* Shadow layer — soft, wide, offset for 3D depth */}
       <Polyline
         positions={shadowPositions}
         pathOptions={{
-          color: '#1e1b4b',
+          color: shadowColor,
           weight: 8,
           opacity: 0.07,
           lineCap: 'round',
@@ -261,7 +535,7 @@ export function ItineraRoute({
       <Polyline
         positions={latLngPositions}
         pathOptions={{
-          color: '#312e81',
+          color: casingColor,
           weight: 6,
           opacity: 0.15,
           lineCap: 'round',
@@ -273,9 +547,9 @@ export function ItineraRoute({
         positions={latLngPositions}
         eventHandlers={{ click: onClick }}
         pathOptions={{
-          color: '#6366f1',
+          color: mainColor,
           weight: 3.5,
-          opacity: 0.85,
+          opacity: opacity,
           lineCap: 'round',
           lineJoin: 'round',
         }}

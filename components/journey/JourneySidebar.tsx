@@ -15,6 +15,10 @@ import {
   Circle,
   ArrowRight,
   Check,
+  ChevronUp,
+  ChevronDown,
+  Car,
+  Footprints
 } from "lucide-react";
 import clsx from "clsx";
 import { Destination, TransportLeg } from "@/types";
@@ -71,11 +75,19 @@ function InlineQuest({
   completeObjective,
   onAdvance,
   nextDestName,
+  focusedCheckpointId,
+  setFocusedCheckpointId,
+  setArrivalMode,
+  reorderCheckpoints,
 }: {
   destination: Destination;
   completeObjective: (destId: string, objId: string) => void;
   onAdvance?: () => void;
   nextDestName?: string;
+  focusedCheckpointId: string | null;
+  setFocusedCheckpointId: (id: string | null) => void;
+  setArrivalMode: (destinationId: string, mode: 'walking' | 'car') => void;
+  reorderCheckpoints: (destinationId: string, fromIndex: number, toIndex: number) => void;
 }) {
   const { objectives } = destination.quest;
   const completedCount = objectives.filter((o) => o.completed).length;
@@ -101,45 +113,111 @@ function InlineQuest({
       </div>
 
       <div className="p-3 space-y-1.5">
-        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-          {destination.quest.title} · {completedCount}/{objectives.length}
-        </p>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+            {destination.quest.title} · {completedCount}/{objectives.length}
+          </p>
+          <div className="flex items-center gap-1 bg-slate-100/80 p-0.5 rounded-md">
+            <button
+              onClick={() => setArrivalMode(destination.id, 'walking')}
+              className={clsx(
+                "p-1 rounded text-[10px] font-medium flex items-center gap-1 transition-all",
+                destination.arrivalMode === 'walking' 
+                  ? "bg-white text-indigo-600 shadow-sm" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Walk to first place"
+            >
+              <Footprints size={10} /> Walk
+            </button>
+            <button
+              onClick={() => setArrivalMode(destination.id, 'car')}
+              className={clsx(
+                "p-1 rounded text-[10px] font-medium flex items-center gap-1 transition-all",
+                destination.arrivalMode === 'car' 
+                  ? "bg-white text-indigo-600 shadow-sm" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Drive to first place"
+            >
+              <Car size={10} /> Drive
+            </button>
+          </div>
+        </div>
 
         {/* Objectives */}
-        {objectives.map((obj) => (
-          <div
-            key={obj.id}
-            onClick={() => !obj.completed && completeObjective(destination.id, obj.id)}
-            className={clsx(
-              "flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all text-[11px]",
-              obj.completed
-                ? "bg-slate-50/80 opacity-60"
-                : "bg-white/80 border border-slate-200/70 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50"
-            )}
-          >
-            <div className={clsx("shrink-0", obj.completed ? "text-emerald-500" : "text-slate-300")}>
-              <AnimatePresence mode="wait">
-                {obj.completed ? (
-                  <motion.div
-                    key="check"
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 400 }}
-                  >
-                    <CheckCircle size={14} className="fill-emerald-50" />
-                  </motion.div>
-                ) : (
-                  <motion.div key="circle">
-                    <Circle size={14} />
-                  </motion.div>
+        {objectives.map((obj, idx) => {
+          const checkpointId = destination.checkpoints[idx]?.id;
+          const isFocused = focusedCheckpointId === checkpointId;
+
+          return (
+            <div
+              key={obj.id}
+              onClick={() => {
+                if (checkpointId) setFocusedCheckpointId(checkpointId);
+              }}
+              className={clsx(
+                "flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all text-[11px]",
+                obj.completed
+                  ? (isFocused ? "bg-slate-100/90 border border-slate-300 shadow-sm opacity-80" : "bg-slate-50/80 border border-transparent opacity-60")
+                  : (isFocused 
+                      ? "bg-indigo-50 border border-indigo-400 shadow-[0_2px_8px_rgba(99,102,241,0.2)]" 
+                      : "bg-white/80 border border-slate-200/70 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/50")
+              )}
+            >
+              <div 
+                className={clsx(
+                  "shrink-0", 
+                  !obj.completed && "cursor-pointer hover:scale-110 transition-transform",
+                  obj.completed ? "text-emerald-500" : "text-slate-300 hover:text-indigo-400"
                 )}
-              </AnimatePresence>
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!obj.completed) completeObjective(destination.id, obj.id);
+                }}
+              >
+                <AnimatePresence mode="wait">
+                  {obj.completed ? (
+                    <motion.div
+                      key="check"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 400 }}
+                    >
+                      <CheckCircle size={14} className="fill-emerald-50" />
+                    </motion.div>
+                  ) : (
+                    <motion.div key="circle">
+                      <Circle size={14} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <span className={clsx("font-medium cursor-pointer flex-1", obj.completed && "line-through text-slate-400")}>
+                {obj.title}
+              </span>
+              
+              {!obj.completed && (
+                <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    className="text-slate-400 hover:text-indigo-500 disabled:opacity-30 disabled:hover:text-slate-400"
+                    disabled={idx === 0}
+                    onClick={(e) => { e.stopPropagation(); reorderCheckpoints(destination.id, idx, idx - 1); }}
+                  >
+                    <ChevronUp size={12} />
+                  </button>
+                  <button 
+                    className="text-slate-400 hover:text-indigo-500 disabled:opacity-30 disabled:hover:text-slate-400"
+                    disabled={idx === objectives.length - 1}
+                    onClick={(e) => { e.stopPropagation(); reorderCheckpoints(destination.id, idx, idx + 1); }}
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                </div>
+              )}
             </div>
-            <span className={clsx("font-medium", obj.completed && "line-through text-slate-400")}>
-              {obj.title}
-            </span>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Advance / Completed callout */}
         <AnimatePresence>
@@ -178,7 +256,7 @@ function InlineQuest({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function JourneySidebar() {
-  const { trip, switchTrip, rollbackToStage, completeObjective } = useTrip();
+  const { trip, switchTrip, rollbackToStage, completeObjective, focusedCheckpointId, setFocusedCheckpointId, setArrivalMode, reorderCheckpoints } = useTrip();
   const [collapsed, setCollapsed] = useState(false);
 
   const completedCount = trip.destinations.filter((d) => d.state === "completed").length;
@@ -360,8 +438,12 @@ export function JourneySidebar() {
                         <InlineQuest
                           destination={dest}
                           completeObjective={completeObjective}
-                          onAdvance={nextDest ? () => advanceToNext(idx) : undefined}
-                          nextDestName={nextDest?.name}
+                          onAdvance={idx < trip.destinations.length - 1 ? () => advanceToNext(idx) : undefined}
+                          nextDestName={trip.destinations[idx + 1]?.name}
+                          focusedCheckpointId={focusedCheckpointId}
+                          setFocusedCheckpointId={setFocusedCheckpointId}
+                          setArrivalMode={setArrivalMode}
+                          reorderCheckpoints={reorderCheckpoints}
                         />
                       )}
                     </div>

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useTrip } from "@/components/providers/TripProvider";
-import { ItineraMap, ItineraMarker, ItineraRoute, TransportModeIcon } from "@/components/ui/Map";
+import { ItineraMap, ItineraMarker, ItineraRoute, TransportModeIcon, HotspotMarker, CheckpointMarker } from "@/components/ui/Map";
 import { JourneySidebar } from "@/components/journey/JourneySidebar";
+import { HotspotPanel } from "@/components/hotspots/HotspotPanel";
+import { Hotspot } from "@/types";
 import { SOSButton } from "@/components/safety/SOSButton";
 import { AIGuide } from "@/components/ai/AIGuide";
 import { BookingDrawer } from "@/components/booking/BookingDrawer";
@@ -16,7 +18,7 @@ import {
 interface ComputedRoute {
   id: string;
   points: [number, number][];
-  variant: "completed" | "future";
+  variant: "completed" | "current" | "future";
   mode: string;
   midpoint: [number, number];
   legId?: string;
@@ -57,8 +59,29 @@ function shouldFlipFlightArc(
 }
 
 export default function JourneyPage() {
-  const { trip, setSelectedLegId } = useTrip();
+  const { trip, setSelectedLegId, focusedCheckpointId, setFocusedCheckpointId } = useTrip();
   const [routes, setRoutes] = useState<ComputedRoute[]>([]);
+  const [selectedHotspot, setSelectedHotspot] = useState<Hotspot | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
+
+  const focusedCheckpoint = trip.destinations
+    .flatMap((d) => d.checkpoints)
+    .find((cp) => cp.id === focusedCheckpointId);
+  
+  // Track map bounds explicitly so we only refit when the city actually changes
+  const [mapFitPoints, setMapFitPoints] = useState<[number, number][]>([]);
+
+  const currentDestination = trip.destinations.find((d) => d.state === "current") || trip.destinations[0];
+
+  useEffect(() => {
+    if (currentDestination) {
+      setMapFitPoints([
+        currentDestination.coordinates,
+        ...currentDestination.checkpoints.map((cp) => cp.coordinates)
+      ]);
+    }
+  }, [currentDestination?.id]); // Only refit map when the city changes
+
 
   useEffect(() => {
     let cancelled = false;
@@ -90,17 +113,22 @@ export default function JourneyPage() {
         if (!fromDest || !toDest) continue;
 
         const toIndex = trip.destinations.findIndex((d) => d.id === leg.toDestinationId);
-        const variant: "completed" | "future" =
-          toIndex <= effectiveCurrentIndex ? "completed" : "future";
+        const variant: "completed" | "current" | "future" =
+          toIndex < effectiveCurrentIndex ? "completed"
+          : toIndex === effectiveCurrentIndex ? "current"
+          : "future";
 
         const flipArc =
           leg.mode === "flight"
             ? shouldFlipFlightArc(fromDest.coordinates, toDest.coordinates, nonFlightCorridors)
             : false;
 
+        const fromCoords = leg.fromTerminalCoordinates || fromDest.coordinates;
+        const toCoords = leg.toTerminalCoordinates || toDest.coordinates;
+
         const geometry = await getInterCityRoute(
-          fromDest.coordinates,
-          toDest.coordinates,
+          fromCoords,
+          toCoords,
           leg.mode,
           flipArc
         );
@@ -119,20 +147,41 @@ export default function JourneyPage() {
       // Intra-city checkpoint routes
       for (const dest of trip.destinations) {
         if (dest.state === "locked") continue;
-        if (dest.checkpoints.length < 2) continue;
+        if (dest.state === "completed" && selectedDestinationId !== dest.id) continue;
+        if (dest.checkpoints.length === 0) continue;
 
-        for (let i = 0; i < dest.checkpoints.length - 1; i++) {
+        const arrivingLeg = trip.legs.find(l => l.toDestinationId === dest.id);
+        const arrivalTerminal = arrivingLeg?.toTerminalCoordinates || dest.coordinates;
+        
+        let pathNodes = [arrivalTerminal, ...dest.checkpoints.map(c => c.coordinates)];
+        let modes = dest.checkpoints.map((_, i) => i === 0 ? (dest.arrivalMode || 'walking') : 'walking');
+        
+        if (dest.state === "current") {
+           // Render from arrival up to the FIRST uncompleted checkpoint
+           const firstUncompletedIndex = dest.quest.objectives.findIndex(o => !o.completed);
+           if (firstUncompletedIndex > -1) {
+             pathNodes = pathNodes.slice(0, firstUncompletedIndex + 2); 
+             modes = modes.slice(0, firstUncompletedIndex + 1);
+           }
+        }
+        
+        if (pathNodes.length < 2) continue;
+
+        for (let i = 0; i < pathNodes.length - 1; i++) {
           if (cancelled) return;
           const geometry = await getIntraCityRoute(
-            dest.checkpoints[i].coordinates,
-            dest.checkpoints[i + 1].coordinates
+            pathNodes[i],
+            pathNodes[i + 1],
+            modes[i] as 'walking' | 'car'
           );
           if (cancelled) return;
           result.push({
             id: `intra-${dest.id}-${i}`,
             points: geometry.points,
-            variant: "completed",
-            mode: "walking",
+            variant: dest.state === "completed" ? "completed"
+                     : dest.state === "current" ? "current"
+                     : "future",
+            mode: modes[i],
             midpoint: getRouteMidpoint(geometry.points),
           });
         }
@@ -143,14 +192,7 @@ export default function JourneyPage() {
 
     computeRoutes();
     return () => { cancelled = true; };
-  }, [trip.legs, trip.destinations]);
-
-  const currentDestination = trip.destinations.find((d) => d.state === "current");
-
-  const fitPoints: [number, number][] = [
-    ...trip.destinations.map((d) => d.coordinates),
-    ...(currentDestination ? currentDestination.checkpoints.map((cp) => cp.coordinates) : []),
-  ];
+  }, [trip.legs, trip.destinations, selectedDestinationId]);
 
   const fallbackCenter: [number, number] = currentDestination
     ? currentDestination.coordinates
@@ -159,7 +201,12 @@ export default function JourneyPage() {
   return (
     <div className="w-full h-full relative flex flex-col">
       <div className="absolute inset-0 z-0">
-        <ItineraMap center={fallbackCenter} zoom={7} fitPoints={fitPoints}>
+        <ItineraMap 
+          center={fallbackCenter} 
+          zoom={12} 
+          fitPoints={mapFitPoints.length > 0 ? mapFitPoints : undefined}
+          focusPoint={selectedHotspot ? selectedHotspot.coordinates : focusedCheckpoint ? focusedCheckpoint.coordinates : null}
+        >
           {trip.destinations.map((dest) => {
             const color =
               dest.state === "completed" ? "emerald"
@@ -171,15 +218,32 @@ export default function JourneyPage() {
                 position={dest.coordinates}
                 label={dest.name}
                 color={color}
+                onClick={() => setSelectedDestinationId(dest.id)}
               />
             );
           })}
+
+          {trip.destinations.flatMap((dest) =>
+            dest.checkpoints.map((cp) => (
+              <CheckpointMarker
+                key={cp.id}
+                position={cp.coordinates}
+                name={cp.name}
+                type={cp.type}
+                isSelected={focusedCheckpointId === cp.id}
+                onClick={() => {
+                  setFocusedCheckpointId(cp.id);
+                }}
+              />
+            ))
+          )}
 
           {routes.map((route) => (
             <ItineraRoute
               key={route.id}
               positions={route.points}
               variant={route.variant}
+              mode={route.mode}
               onClick={route.legId ? () => setSelectedLegId(route.legId!) : undefined}
             />
           ))}
@@ -191,11 +255,24 @@ export default function JourneyPage() {
               mode={route.mode}
             />
           ))}
+
+          {selectedHotspot && (
+            <HotspotMarker
+              position={selectedHotspot.coordinates}
+              name={selectedHotspot.name}
+              category={selectedHotspot.category}
+              isSelected
+            />
+          )}
         </ItineraMap>
       </div>
 
       {/* Full-height collapsible sidebar — contains quest details + progress controls */}
       <JourneySidebar />
+      <HotspotPanel 
+        selectedHotspot={selectedHotspot} 
+        onHotspotSelect={setSelectedHotspot} 
+      />
       <SOSButton />
       <AIGuide />
       <BookingDrawer />

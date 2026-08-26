@@ -8,11 +8,32 @@ export interface Objective {
   completed: boolean;
 }
 
+export type HotspotCategory =
+  | 'attraction' | 'restaurant' | 'museum' | 'park'
+  | 'shopping' | 'hotel' | 'nightlife' | 'transport';
+
+export type BudgetLevel = 1 | 2 | 3 | 4;
+
+export interface Hotspot {
+  id: string;
+  name: string;
+  category: HotspotCategory;
+  coordinates: [number, number];
+  rating?: number;
+  ratingCount?: number;
+  budgetLevel?: BudgetLevel;
+  openNow?: boolean;
+  photoUrl?: string;
+  description?: string;
+  distanceKm?: number;
+}
+
 export interface Checkpoint {
   id: string;
   name: string;
-  type: 'hotel' | 'monument' | 'attraction' | 'transit';
+  type: 'hotel' | 'monument' | 'attraction' | 'transit' | 'restaurant' | 'museum' | 'park' | 'shopping' | 'nightlife' | 'transport';
   coordinates: [number, number]; // [lat, lng]
+  hotspotId?: string; // links back to the Hotspot ID if added dynamically
 }
 
 export interface Destination {
@@ -20,6 +41,7 @@ export interface Destination {
   name: string;
   coordinates: [number, number];
   state: TripState;
+  arrivalMode?: 'walking' | 'car';
   checkpoints: Checkpoint[];
   quest: {
     title: string;
@@ -39,6 +61,8 @@ export interface TransportLeg {
   fare: string;
   booked: boolean;
   ticketPayload?: string;
+  fromTerminalCoordinates?: [number, number];
+  toTerminalCoordinates?: [number, number];
 }
 
 export interface Trip {
