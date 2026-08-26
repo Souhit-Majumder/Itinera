@@ -100,3 +100,87 @@ export const getAIContextualResponse = (state: 'initial' | 'bengaluru-progress' 
       return "Welcome to Itinera. You have completed Mysuru and are currently exploring Bengaluru.";
   }
 };
+
+export const demoFlightTrip: Trip = {
+  id: 'trip-2',
+  name: 'Golden Triangle & West',
+  destinations: [
+    {
+      id: 'dest-mumbai',
+      name: 'Mumbai',
+      coordinates: [19.0760, 72.8777],
+      state: 'completed',
+      checkpoints: [
+        { id: 'cp-mumbai-gateway', name: 'Gateway of India', type: 'monument', coordinates: [18.9220, 72.8347] }
+      ],
+      quest: {
+        title: 'Discover Mumbai',
+        description: 'Explore the city of dreams.',
+        objectives: [
+          { id: 'obj-m1', title: 'Visit Gateway of India', completed: true }
+        ]
+      }
+    },
+    {
+      id: 'dest-delhi',
+      name: 'New Delhi',
+      coordinates: [28.6139, 77.2090],
+      state: 'current',
+      checkpoints: [
+        { id: 'cp-delhi-hotel', name: 'Check-in to hotel', type: 'hotel', coordinates: [28.6139, 77.2090] },
+        { id: 'cp-delhi-indiagate', name: 'India Gate', type: 'monument', coordinates: [28.6129, 77.2295] },
+        { id: 'cp-delhi-redfort', name: 'Red Fort', type: 'monument', coordinates: [28.6562, 77.2410] }
+      ],
+      quest: {
+        title: 'Explore Capital',
+        description: 'Complete these objectives to unlock your next destination.',
+        objectives: [
+          { id: 'obj-d1', title: 'Check-in to hotel', completed: true },
+          { id: 'obj-d2', title: 'Visit India Gate', completed: false },
+          { id: 'obj-d3', title: 'Explore Red Fort', completed: false }
+        ]
+      }
+    },
+    {
+      id: 'dest-agra',
+      name: 'Agra',
+      coordinates: [27.1767, 78.0081],
+      state: 'locked',
+      checkpoints: [
+        { id: 'cp-agra-taj', name: 'Taj Mahal', type: 'monument', coordinates: [27.1751, 78.0421] }
+      ],
+      quest: {
+        title: 'Wonder of the World',
+        description: 'Behold the Taj Mahal.',
+        objectives: [
+          { id: 'obj-a1', title: 'Visit Taj Mahal', completed: false }
+        ]
+      }
+    }
+  ],
+  legs: [
+    {
+      id: 'leg-flight-1',
+      fromDestinationId: 'dest-mumbai',
+      toDestinationId: 'dest-delhi',
+      mode: 'flight',
+      provider: 'Air Itinera',
+      departureTime: '10:00',
+      arrivalTime: '12:15',
+      fare: '₹5500',
+      booked: true,
+      ticketPayload: 'DEMO-TICKET-BOM-DEL'
+    },
+    {
+      id: 'leg-train-2',
+      fromDestinationId: 'dest-delhi',
+      toDestinationId: 'dest-agra',
+      mode: 'train',
+      provider: 'Vande Bharat',
+      departureTime: '06:00',
+      arrivalTime: '07:30',
+      fare: '₹1200',
+      booked: false
+    }
+  ]
+};

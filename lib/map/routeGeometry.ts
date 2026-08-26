@@ -44,28 +44,42 @@ async function fetchOSRMRoute(
 // ─── Geometry generators ───────────────────────────────────────────────────
 
 /**
- * Generate a strongly curved 3D-looking flight arc between two points.
- * The arc peaks northward (upward on a Mercator map) to simulate altitude.
+ * Generate a smooth, symmetric 3D-looking flight arc between two points.
+ *
+ * The arc is displaced perpendicularly to the chord (the straight line between
+ * the two endpoints) using a parabolic `4t(1-t)` weight. This guarantees:
+ *  - Both endpoints are exactly anchored (displacement = 0 at t=0 and t=1).
+ *  - The apex is exactly at the midpoint (t=0.5).
+ *  - The arc is perfectly symmetric regardless of compass heading.
+ *
+ * @param flipArc  Mirror the arc to the opposite side of the chord.
+ *                 Use when the default arc visually conflicts with another route.
  */
 function generateFlightArc(
   from: [number, number],
   to: [number, number],
-  segments = 48
+  segments = 60,
+  flipArc = false
 ): [number, number][] {
-  const points: [number, number][] = [];
   const dLat = to[0] - from[0];
   const dLng = to[1] - from[1];
-  const distance = Math.sqrt(dLat * dLat + dLng * dLng);
-  
-  // Arc height is substantially increased for a clear 3D flight-path impression
-  // Minimum of 1.5 degrees and up to 40% of the distance
-  const arcHeight = Math.max(distance * 0.4, 1.5);
+  const chordLength = Math.sqrt(dLat * dLat + dLng * dLng);
 
+  const arcHeight = Math.max(chordLength * 0.35, 1.5);
+
+  // Unit perpendicular: rotate chord 90° CCW. Negate to flip to opposite side.
+  const side = flipArc ? 1 : -1;
+  const perpLat = chordLength > 0 ? side * (-dLng / chordLength) : 0;
+  const perpLng = chordLength > 0 ? side * ( dLat / chordLength) : 0;
+
+  const points: [number, number][] = [];
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
-    const lat = from[0] + dLat * t + arcHeight * Math.sin(Math.PI * t);
-    const lng = from[1] + dLng * t;
-    points.push([lat, lng]);
+    const offset = arcHeight * 4 * t * (1 - t);
+    points.push([
+      from[0] + dLat * t + perpLat * offset,
+      from[1] + dLng * t + perpLng * offset,
+    ]);
   }
   return points;
 }
@@ -156,10 +170,11 @@ export async function getIntraCityRoute(
 export async function getInterCityRoute(
   from: [number, number],
   to: [number, number],
-  mode: string
+  mode: string,
+  flipArc = false
 ): Promise<RouteGeometry> {
   if (mode === 'flight' || mode === 'plane') {
-    return { points: generateFlightArc(from, to), source: 'arc' };
+    return { points: generateFlightArc(from, to, 60, flipArc), source: 'arc' };
   }
 
   // Map transport mode to OSRM profile

@@ -311,14 +311,14 @@ export function TransportModeIcon({
   const icon = L.divIcon({
     className: 'transport-mode-icon',
     html: `<div style="
-      width: 26px; height: 26px;
+      width: 34px; height: 34px;
       background: #fff;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
-    "><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="#475569">${svgPath}</svg></div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+      box-shadow: 0 2px 6px rgba(0,0,0,0.16), 0 0 0 1.5px rgba(99,102,241,0.18);
+    "><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="#6366f1">${svgPath}</svg></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
   });
 
   return <Marker position={position as LatLngTuple} icon={icon} />;
